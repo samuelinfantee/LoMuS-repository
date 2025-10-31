@@ -18,3 +18,45 @@ rsync -a data/dms/[PROTEIN_NAME]/ data/dms_one/[PROTEIN NAME]/
 
 python features_csv.py  
 sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features.py  
+to remove a protein (after running features_csv.py): rm -rf data/dms_one/ [PROTEIN_NAME]  
+
+(STILL NEED TO DESCRIBE HOW TO RUN TRAIN/TEST
+
+
+# Running Tsuboyama dataset:  
+step 1:   
+conda activate /data/sinfante/envs/tape  
+pip install --no-input "datasets==2.20.0" "pyarrow>=10" fsspec  
+
+step 2:  
+cd ~/protstab/external/EsmTherm  
+mv datasets esmt_data 2>/dev/null || true  
+ln -s esmt_data datasets 2>/dev/null || true   
+[ -f requirements.txt ] && pip install --no-input -r requirements.txt  
+pip install -e .  
+
+step 3:  
+cd ~/protstab/external/EsmTherm  
+python prebuild_dataset.py  
+
+python build_dataset.py \  
+  --dataset_dir esmt_data/dataset \  
+  --csv        esmt_data/analysis/filtered_data.csv \  
+  --split_csv  esmt_data/wildtype_split.csv  
+
+ls -lh esmt_data/dataset  
+(expect: args.json, dataset.csv, dataset_dict.json, and dirs: train  val  test)  
+
+step 4:  
+python ~/protstab/scripts/esmtherm_to_murastab.py \    
+  --split_dir  ~/protstab/external/EsmTherm/esmt_data/dataset \  
+  --out_root   ~/protstab/data/dms_one/tsub_mega  
+
+head -n 3 ~/protstab/data/dms_one/tsub_mega/train.csv  
+
+step 5:
+cd ~/protstab  
+python features.py --root data/dms_one --protein tsub_mega  
+
+
+
