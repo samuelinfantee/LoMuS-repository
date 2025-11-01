@@ -1,1 +1,104 @@
+#!/usr/bin/env python3
+import os, re, argparse
+import pandas as pd
+from pathlib import Path
+CAND_SEQ = ['sequence','protein_sequence','AASequence','seq','aa_seq','primary']
+CAND_Y   = ['dG','dg','DeltaG','deltaG','stability','target','score','y']
+CAND_SPLIT = ['split','subset','Split','SplitSet']
+
+def pick_col(cols, cands):
+    for c in cands:
+        if c in cols: return c
+    lower = {c.lower(): c for c in cols}
+    for c in cands:
+        if c.lower() in lower: return lower[c.lower()]
+    return None
+
+def clean_seq(s):
+    if pd.isna(s): return None
+    s = str(s).strip().upper()
+    return re.sub(r'[^ACDEFGHIKLMNPQRSTVWY]','',s) or None
+
+def df_to_mu(csv_path, out_path):
+    df = pd.read_csv(csv_path)
+    seq = pick_col(df.columns, CAND_SEQ)
+    y   = pick_col(df.columns, CAND_Y)
+    if not seq or not y:
+        raise RuntimeError(f"Missing columns in {csv_path}; got {list(df.columns)}")
+    out = pd.DataFrame({
+        'sequence': df[seq].map(clean_seq),
+        'target'  : pd.to_numeric(df[y], errors='coerce')
+    }).dropna()
+    out.to_csv(out_path, index=False)
+    print(f"[OK] {csv_path} -> {out_path} n={len(out)}")
+
+def read_split_from_hf_dir(split_dir: Path, split_name: str):
+    """Try to read a split from HF-style outputs:
+       1) {split}/ *.parquet or *.csv
+       2) dataset.csv filtered by split column
+    """
+    split_path = split_dir / split_name
+    flat_csv   = split_dir / f"{split_name}.csv"
+    dataset_csv = split_dir / "dataset.csv"
+
+    # Case A: direct {split}.csv
+    if flat_csv.exists():
+        return pd.read_csv(flat_csv)
+
+    # Case B: subdir with parquet or csv shards
+    if split_path.is_dir():
+        shards = list(split_path.glob("*.parquet")) or list(split_path.glob("*.csv"))
+        if shards:
+            # concatenate shards
+            frames = []
+            for fp in shards:
+                if fp.suffix == ".parquet":
+                    frames.append(pd.read_parquet(fp))
+                else:
+                    frames.append(pd.read_csv(fp))
+            return pd.concat(frames, ignore_index=True)
+
+    # Case C: dataset.csv with a split column
+    if dataset_csv.exists():
+        big = pd.read_csv(dataset_csv, low_memory=False)
+        split_col = pick_col(big.columns, CAND_SPLIT)
+        if split_col:
+            key = split_name if split_name != 'valid' else 'val'
+            return big[big[split_col].astype(str).str.lower() == key]
+    raise FileNotFoundError(f"Could not resolve split '{split_name}' in {split_dir}")
+
+def convert_split_generic(src_dir, split_name, out_path):
+    df = read_split_from_hf_dir(Path(src_dir), split_name)
+    seq = pick_col(df.columns, CAND_SEQ)
+    y   = pick_col(df.columns, CAND_Y)
+    if not seq or not y:
+        raise RuntimeError(f"Missing sequence/target columns for split {split_name}; got {list(df.columns)}")
+    out = pd.DataFrame({
+        'sequence': df[seq].map(clean_seq),
+        'target'  : pd.to_numeric(df[y], errors='coerce')
+    }).dropna()
+    out.to_csv(out_path, index=False)
+    print(f"[OK] {split_name} -> {out_path} n={len(out)}")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--split_dir', default='~/protstab/external/EsmTherm/esmt_data/dataset',
+                    help='Folder that contains HF-style dataset with dataset.csv and train/val/test')
+    ap.add_argument('--out_root',  default='~/protstab/data/dms_one/tsub_mega',
+                    help='Output folder for MuRaStab one-protein dataset')
+    args = ap.parse_args()
+
+    split_dir = os.path.expanduser(args.split_dir)
+    out_root  = os.path.expanduser(args.out_root)
+    os.makedirs(out_root, exist_ok=True)
+
+    # convert three splits
+    for sp in ['train','valid','test']:
+        dst = str(Path(out_root) / f'{sp}.csv')
+        convert_split_generic(split_dir, sp, dst)
+
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
 
