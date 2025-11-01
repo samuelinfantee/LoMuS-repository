@@ -54,7 +54,7 @@ python ~/protstab/scripts/esmtherm_to_murastab.py \
 
 head -n 3 ~/protstab/data/dms_one/tsub_mega/train.csv  
 
-step 5:
+step 5:  
 cd ~/protstab  
 python features.py --root data/dms_one --protein tsub_mega  
 
