@@ -1,4 +1,4 @@
-# MuRaStab-repository
+# LoMuS-repository
 
 # Running DMS proteins:
 Step 1:  
@@ -14,7 +14,7 @@ step 3 (train on a specific protein):
 cd ~/protstab  
 mkdir -p data/dms_one  
 rsync -a data/dms/[PROTEIN_NAME]/ data/dms_one/[PROTEIN NAME]/  
-(proteins used in MuRaStab paper: YAP1_HUMAN_Araya_2012, VILI_CHICK_Tsuboyama_2023_1YU5, PIN1_HUMAN_Tsuboyama_2023_1I6C)  
+(proteins used in LoMuS paper: YAP1_HUMAN_Araya_2012, VILI_CHICK_Tsuboyama_2023_1YU5, PIN1_HUMAN_Tsuboyama_2023_1I6C)  
 
 python features_csv.py  
 sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features.py  
@@ -48,7 +48,7 @@ ls -lh esmt_data/dataset
 (expect: args.json, dataset.csv, dataset_dict.json, and dirs: train  val  test)  
 
 step 4:  
-python ~/protstab/scripts/esmtherm_to_murastab.py \    
+python ~/protstab/scripts/esmtherm_to_lomus.py \    
   --split_dir  ~/protstab/external/EsmTherm/esmt_data/dataset \  
   --out_root   ~/protstab/data/dms_one/tsub_mega  
 
