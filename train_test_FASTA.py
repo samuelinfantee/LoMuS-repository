@@ -84,8 +84,9 @@ def train_one(device,
     model = PLM_With_Features(
         feature_dim=feature_dim,
         PLM_model_name=LM_NAME,
-        dropout=0.1
-    ).to(device)
+        dropout=0.1,
+        use_lora=True,
+        ).to(device)
 
     # --------- Two LR optimizer (PLM vs head) ---------
     PLM_params = []
