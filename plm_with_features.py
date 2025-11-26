@@ -110,7 +110,7 @@ class PLM_With_Features(nn.Module):
                  PLM_model_name: str = 'facebook/esm2_t33_650M_UR50D',
                  dropout: float = 0.1,
                  # LoRA knobs
-                 use_lora: bool = False,
+                 use_lora: bool = True,
                  lora_r: int = 8,
                  lora_alpha: int = 16,
                  lora_dropout: float = 0.05,
