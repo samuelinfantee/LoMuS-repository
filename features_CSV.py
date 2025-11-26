@@ -1,33 +1,29 @@
-#features.py
 #!/usr/bin/env python3
 """
-Builds per-sequence features for **DMS per-protein** datasets while keeping the
-same feature recipe/logic as the original Stability pipeline).
-
-Expected layout (after your prepare_unirep_dms.py step):
-  data/dms_one/<protein>/{train.csv,valid.csv,test.csv}
+Builds per-sequence features for DMS per-protein and Tsuboyama datasets while keeping the
+same feature recipe/logic as the original TAPE Stability pipeline).
 
 Each CSV must have:
   - sequence : str (AA, uppercase)
   - a numeric target column: one of {target, stability, score, y} or any first numeric column
 
-Optional:
-  - data/dms_one/<protein>/wt_seq.txt
-  - data/dms_one/<protein>/WT_geom_<protein>.npz  (ignored here; used later by dataset if USE_TOKEN_FEATS=True)
-
 Outputs (inside each protein folder):
-  - train_seqs.txt, valid_seqs.txt, test_seqs.txt
-  - X_train_aligned.npy / y_train_aligned.npy
-  - X_valid_aligned.npy / y_valid_aligned.npy
-  - X_test_aligned.npy  / y_test_aligned.npy
-  - X_train_std.npy / X_valid_std.npy / X_test_std.npy
-  - feature_names_all.txt, feature_names.txt
-  - scaler.pkl
+  - train_seqs_v2.txt, valid_seqs_v2.txt, test_seqs_v2.txt
+  - X_train_aligned_v2.npy / y_train_aligned_v2.npy
+  - X_valid_aligned_v2.npy / y_valid_aligned_v2.npy
+  - X_test_aligned_v2.npy  / y_test_aligned_v2.npy
+  - X_train_std_v2.npy / X_valid_std_v2.npy / X_test_std_v2.npy
+  - feature_names_all_v2.txt, feature_names_v2.txt
+  - scaler_v2.pkl
 
 Usage:
-  python features.py --root data/dms_one --protein YAP1_HUMAN_Araya_2012
-  # or process all subfolders under --root:
-  python features.py --root data/dms_one
+  1) Follow instructions from the README.
+  2) Run the code (Also in instructions):
+    DMS per-protein:
+        python features_CSV.py
+
+    Tsuboyama:
+        python features.py --root data/dms_one --protein tsub_mega
 """
 
 import os
@@ -79,7 +75,7 @@ def parse_aaindex1(file_path):
     return aaindex, list(aaindex.keys())
 
 # ---------------------------
-# Basis features (same recipe as original)
+# Basis features
 try:
     from Bio.SeqUtils.ProtParam import ProteinAnalysis
     def compute_basis_features(sequence):
@@ -118,7 +114,7 @@ except Exception as e:
 basis_names = ['seq_len', 'molecular_weight', 'isoelectric_point', 'gravy', 'aliphatic_index', 'instability_index']
 
 # ---------------------------
-# Vectorize one sequence (AAindex mean + basis) — same logic as original
+# Vectorize one sequence (AAindex mean + basis)
 def sequence_to_vector(sequence, aaindex, aaindex_keys):
     aa_features = []
     for aa in sequence:
@@ -194,15 +190,15 @@ def _process_protein(protein_dir, aaindex, aaindex_keys):
     va_seqs, y_va = _read_csv(os.path.join(protein_dir, 'valid.csv'))
     te_seqs, y_te = _read_csv(os.path.join(protein_dir, 'test.csv'))
 
-    # feature names (ALL cols kept, same policy as original)
+    # feature names
     feature_names_all = aaindex_keys + basis_names
-    with open(os.path.join(protein_dir, 'feature_names_all.txt'), 'w') as f:
+    with open(os.path.join(protein_dir, 'feature_names_all_v2.txt'), 'w') as f:
         for n in feature_names_all: f.write(n + '\n')
-    with open(os.path.join(protein_dir, 'feature_names.txt'), 'w') as f:
+    with open(os.path.join(protein_dir, 'feature_names_v2.txt'), 'w') as f:
         for n in feature_names_all: f.write(n + '\n')
-    print(f"[OUT] feature_names_* written ({len(feature_names_all)} names)")
+    print(f"[OUT] feature_names_*_v2 written ({len(feature_names_all)} names)")
 
-    # vectorize with identical recipe
+    # vectorize
     def vec_many(seqs):
         out = []
         for s in tqdm(seqs, desc=" featurize"):
@@ -212,27 +208,27 @@ def _process_protein(protein_dir, aaindex, aaindex_keys):
     X_tr_raw = vec_many(tr_seqs); X_va_raw = vec_many(va_seqs); X_te_raw = vec_many(te_seqs)
 
     # save fasta-like lists for dataset class
-    _write_fasta_like(os.path.join(protein_dir, 'train_seqs.txt'), tr_seqs)
-    _write_fasta_like(os.path.join(protein_dir, 'valid_seqs.txt'), va_seqs)
-    _write_fasta_like(os.path.join(protein_dir, 'test_seqs.txt'),  te_seqs)
+    _write_fasta_like(os.path.join(protein_dir, 'train_seqs_v2.txt'), tr_seqs)
+    _write_fasta_like(os.path.join(protein_dir, 'valid_seqs_v2.txt'), va_seqs)
+    _write_fasta_like(os.path.join(protein_dir, 'test_seqs_v2.txt'),  te_seqs)
 
     # save aligned raw
-    np.save(os.path.join(protein_dir, 'X_train_aligned.npy'), X_tr_raw); np.save(os.path.join(protein_dir, 'y_train_aligned.npy'), y_tr)
-    np.save(os.path.join(protein_dir, 'X_valid_aligned.npy'), X_va_raw); np.save(os.path.join(protein_dir, 'y_valid_aligned.npy'), y_va)
-    np.save(os.path.join(protein_dir, 'X_test_aligned.npy'),  X_te_raw); np.save(os.path.join(protein_dir, 'y_test_aligned.npy'),  y_te)
-    print("[OUT] Saved aligned arrays.")
+    np.save(os.path.join(protein_dir, 'X_train_aligned_v2.npy'), X_tr_raw); np.save(os.path.join(protein_dir, 'y_train_aligned_v2.npy'), y_tr)
+    np.save(os.path.join(protein_dir, 'X_valid_aligned_v2.npy'), X_va_raw); np.save(os.path.join(protein_dir, 'y_valid_aligned_v2.npy'), y_va)
+    np.save(os.path.join(protein_dir, 'X_test_aligned_v2.npy'),  X_te_raw); np.save(os.path.join(protein_dir, 'y_test_aligned_v2.npy'),  y_te)
+    print("[OUT] Saved aligned *_v2 arrays.")
 
     # standardize (same as original)
     scaler = StandardScaler()
     X_tr = scaler.fit_transform(X_tr_raw)
     X_va = scaler.transform(X_va_raw)
     X_te = scaler.transform(X_te_raw)
-    np.save(os.path.join(protein_dir, 'X_train_std.npy'), X_tr)
-    np.save(os.path.join(protein_dir, 'X_valid_std.npy'), X_va)
-    np.save(os.path.join(protein_dir, 'X_test_std.npy'),  X_te)
-    with open(os.path.join(protein_dir, 'scaler.pkl'), 'wb') as f:
+    np.save(os.path.join(protein_dir, 'X_train_std_v2.npy'), X_tr)
+    np.save(os.path.join(protein_dir, 'X_valid_std_v2.npy'), X_va)
+    np.save(os.path.join(protein_dir, 'X_test_std_v2.npy'),  X_te)
+    with open(os.path.join(protein_dir, 'scaler_v2.pkl'), 'wb') as f:
         pkl.dump(scaler, f)
-    print("[OUT] Saved standardized arrays + scaler.pkl")
+    print("[OUT] Saved standardized *_v2 arrays + scaler_v2.pkl")
 
     # sanity
     for name, y in [('train', y_tr), ('valid', y_va), ('test', y_te)]:
@@ -265,8 +261,9 @@ def main():
     for p in proteins:
         _process_protein(os.path.join(args.root, p), aaindex, aaindex_keys)
 
-    print("\n✅ Done. Training should point to per-protein X_*_std.npy inside each folder.")
+    print("\n✅ Done. Training should point to per-protein X_*_std_v2.npy inside each folder.")
 
 if __name__ == '__main__':
     main()
+
 
