@@ -1,4 +1,4 @@
-#features.py ------------------------------------------------------------------------------------------------------------------
+#features_FASTA.py ------------------------------------------------------------------------------------------------------------------
 """
 Builds per-sequence features for the TAPE Stability task in EXACT FASTA order.
 Adds AAindex means + simple basis features.
@@ -12,7 +12,7 @@ Outputs (current directory):
 - scaler.pkl
 
 Usage:
-python features.py
+python features_FASTA.py
 """
 
 import os
@@ -126,7 +126,7 @@ def sequence_to_vector(sequence, aaindex, aaindex_keys):
     ])
 
 # ---------------------------
-# LMDB index: sequence → FIFO list of stability_score (no topology)
+# LMDB index: sequence → FIFO list of stability_score
 def build_lmdb_index(lmdb_path):
     env = lmdb.open(lmdb_path, readonly=True, lock=False, max_readers=2048)
     idx = {}
@@ -164,6 +164,7 @@ def align_split(fasta_path, lmdb_path, aaindex, aaindex_keys):
 
     X_list, y_list = [], []
     missing = 0
+    seq_lengths = []
 
     for seq in fasta_seqs:
         lst = lmdb_idx.get(seq)
@@ -173,6 +174,7 @@ def align_split(fasta_path, lmdb_path, aaindex, aaindex_keys):
         y = lst.pop(0)   # FIFO for duplicates
         vec = sequence_to_vector(seq, aaindex, aaindex_keys)
         X_list.append(vec); y_list.append(y)
+        seq_lengths.append(len(seq))
         if len(lst) == 0:
             lmdb_idx.pop(seq, None)
 
@@ -185,7 +187,11 @@ def align_split(fasta_path, lmdb_path, aaindex, aaindex_keys):
     X = np.asarray(X_list, dtype=np.float32)
     y = np.asarray(y_list, dtype=np.float32)
     print(f"[OK] Aligned shapes: X={X.shape}, y={y.shape}")
-    return X, y
+
+    min_len = int(np.min(seq_lengths)) if len(seq_lengths) > 0 else 0
+    max_len = int(np.max(seq_lengths)) if len(seq_lengths) > 0 else 0
+
+    return X, y, min_len, max_len
 
 # ---------------------------
 # Main
@@ -203,9 +209,9 @@ if __name__ == '__main__':
     print(f"[OUT] feature_names_all.txt ({len(feature_names_all)} names)")
 
     # Align splits
-    X_tr_raw, y_tr = align_split(TRAIN_FASTA, TRAIN_LMDB, aaindex, aaindex_keys)
-    X_va_raw, y_va = align_split(VALID_FASTA, VALID_LMDB, aaindex, aaindex_keys)
-    X_te_raw, y_te = align_split(TEST_FASTA,  TEST_LMDB,  aaindex, aaindex_keys)
+    X_tr_raw, y_tr, tr_min_len, tr_max_len = align_split(TRAIN_FASTA, TRAIN_LMDB, aaindex, aaindex_keys)
+    X_va_raw, y_va, va_min_len, va_max_len = align_split(VALID_FASTA, VALID_LMDB, aaindex, aaindex_keys)
+    X_te_raw, y_te, te_min_len, te_max_len = align_split(TEST_FASTA,  TEST_LMDB,  aaindex, aaindex_keys)
 
     # Save aligned raw
     np.save('X_train_aligned.npy', X_tr_raw); np.save('y_train_aligned.npy', y_tr)
@@ -231,4 +237,13 @@ if __name__ == '__main__':
     for name, y in [('train', y_tr), ('valid', y_va), ('test', y_te)]:
         print(f"  {name}: n={len(y):5d}  mean={np.mean(y):.6f}  std={np.std(y):.6f}")
 
+    print("\n[Sanity] Sequence lengths:")
+    for name, mn, mx in [('train', tr_min_len, tr_max_len),
+                         ('valid', va_min_len, va_max_len),
+                         ('test',  te_min_len, te_max_len)]:
+        print(f"  {name}: min_len={mn}  max_len={mx}")
+
     print("\n✅ Done. Training should point at X_*_std.npy.")
+
+
+
