@@ -49,8 +49,10 @@ python features.py --root data/dms_one --protein tsub_mega
 
 # Running TAPE stability:
 Dowload and extract the stability dataset:  
+```
 wget http://s3.amazonaws.com/songlabdata/proteindata/data_pytorch/stability.tar.gz  
 tar -xvzf stability.tar.gz -C ./data/  
+```
 
 Directory contents after extraction:  
 ./data/stability/  
@@ -61,23 +63,32 @@ stability_test.lmdb/
 
 # Running DMS proteins:  
 Step 1:  
+```
 cd ~/protstab  
 mkdir -p data/proteingym && cd data/proteingym  
 curl -L -o DMS_ProteinGym_substitutions.zip https://marks.hms.harvard.edu/proteingym/ProteinGym_v1.3/DMS_ProteinGym_substitutions.zip  
+```
 
-step 2:  
+step 2:
+```
 python tools/prepare_unirep_dms.py --raw data/proteingym --out data/dms --seed 42 --min_seqs 200  
+```
 
 step 3 (train on a specific protein):  
+```
 cd ~/protstab  
 mkdir -p data/dms_one  
-rsync -a data/dms/[PROTEIN_NAME]/ data/dms_one/[PROTEIN NAME]/  
+rsync -a data/dms/[PROTEIN_NAME]/ data/dms_one/[PROTEIN NAME]/
+```
 (proteins used in LoMuS paper: YAP1_HUMAN_Araya_2012, VILI_CHICK_Tsuboyama_2023_1YU5, PIN1_HUMAN_Tsuboyama_2023_1I6C)  
-
+```
 python features_CSV.py  
-sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features.py  
-to remove a protein (after running features_csv.py): rm -rf data/dms_one/ [PROTEIN_NAME]  
-
+sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features.py
+```
+to remove a protein (after running features_csv.py): 
+```
+rm -rf data/dms_one/ [PROTEIN_NAME]  
+```
 (STILL NEED TO DESCRIBE HOW TO RUN TRAIN/TEST
 
 
