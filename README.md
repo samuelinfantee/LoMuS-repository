@@ -90,7 +90,7 @@ rsync -a data/dms/[PROTEIN_NAME]/ data/dms_one/[PROTEIN NAME]/
 (proteins used in LoMuS paper: YAP1_HUMAN_Araya_2012, VILI_CHICK_Tsuboyama_2023_1YU5, PIN1_HUMAN_Tsuboyama_2023_1I6C)  
 ```
 python features_CSV.py  
-sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features.py
+sed -i 's|^DMS_ROOT\s*=.*|DMS_ROOT     = "./data/dms_one"|' features_CSV.py
 ```
 to remove a protein (after running features_csv.py): 
 ```
