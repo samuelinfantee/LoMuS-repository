@@ -40,12 +40,11 @@ class StabilityWithFeaturesDataset(Dataset):
             self.sequences=[ln.strip() for ln in f if ln and not ln.startswith('>')]
 
         # Load features; tolerate object dtype by replacing with a numeric dummy column
-        arr = np.load(features_path, allow_pickle=True)
+        arr = np.load(features_path)
         if arr.dtype == object:
-            arr = np.zeros((len(self.sequences), 1), dtype=np.float32)
-        else:
-            arr = arr.astype(np.float32)
-        self.features = arr
+            raise ValueError(f"Features file {features_path} has dtype=object, this is unexpected.")
+        self.features = arr.astype(np.float32)
+
 
         #load labels
         self.labels  =np.load(labels_path).astype(np.float32)
