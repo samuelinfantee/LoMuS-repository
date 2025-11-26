@@ -2,8 +2,10 @@
 
 # Running Tsuboyama dataset:  
 step 1:   
+```
 conda activate /data/sinfante/envs/tape  
 pip install --no-input "datasets==2.20.0" "pyarrow>=10" fsspec  
+```
 
 step 2:  
 cd ~/protstab/external/EsmTherm  
