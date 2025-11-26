@@ -93,6 +93,38 @@ def _targets_exist(hf_model: nn.Module, targets):
 
 
 
+class CrossFusionBlock(nn.Module):
+    def __init__(self, hidden: int, token_feat_dim: int, heads: int = 4, dropout: float = 0.1):
+        super().__init__()
+        self.pre = nn.Sequential(
+            nn.LayerNorm(token_feat_dim),
+            nn.Linear(token_feat_dim, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout)
+        )
+        self.gate = nn.Sequential(nn.Linear(token_feat_dim, 1), nn.Sigmoid())
+        self.attn = nn.MultiheadAttention(embed_dim=hidden, num_heads=heads, dropout=dropout, batch_first=True)
+        self.ln1  = nn.LayerNorm(hidden)
+        self.ffn  = nn.Sequential(
+            nn.Linear(hidden, 4*hidden), nn.GELU(), nn.Dropout(dropout),
+            nn.Linear(4*hidden, hidden), nn.Dropout(dropout)
+        )
+        self.ln2  = nn.LayerNorm(hidden)
+        # start fusion ~OFF: sigmoid(-6)≈0.002
+        self.res_logit = nn.Parameter(torch.tensor(-6.0))
+
+    def forward(self, seq_tokens, token_feats, key_padding_mask=None):
+        K = self.pre(token_feats)           # (B,L,H)
+        gate = self.gate(token_feats)       # (B,L,1)
+        V = K * gate
+        out, _ = self.attn(seq_tokens, K, V, key_padding_mask=key_padding_mask)  # (B,L,H)
+        alpha = sigmoid_from_logit(self.res_logit)
+        x = self.ln1(seq_tokens + alpha * out)
+        x2 = self.ffn(x)
+        x = self.ln2(x + alpha * x2)
+        return x
+
+
 class PLM_With_Features(nn.Module):
     """
     Protein language model backbone with global per sequence features.
@@ -108,18 +140,19 @@ class PLM_With_Features(nn.Module):
     """
     def __init__(self, feature_dim: int,
                  PLM_model_name: str = 'facebook/esm2_t33_650M_UR50D',
-                 dropout: float = 0.1,
-                 # LoRA knobs
+                 dropout: float = 0.1, token_feat_dim: int = 9,
+                 cross_layers: int = 2, heads: int = 4,
+                 # --- LoRA knobs ---
                  use_lora: bool = True,
-                 lora_r: int = 8,
-                 lora_alpha: int = 16,
+                 lora_r: int = 8, # rank
+                 lora_alpha: int = 16, # scaling
                  lora_dropout: float = 0.05,
                  lora_target_modules = ("q_proj", "k_proj", "v_proj", "out_proj")):
         super().__init__()
         # HF ESM2 backbone
         self.PLM = AutoModel.from_pretrained(PLM_model_name)
 
-        # Inject LoRA adapters on attention projections if requested.
+        # Inject LoRA adapters on attention projections.
         if use_lora:
             if not _HAS_PEFT:
                 raise ImportError(
@@ -134,7 +167,7 @@ class PLM_With_Features(nn.Module):
                 # acceptable fallback for encoders
                 task_type = TaskType.TOKEN_CLS
 
-            # Use provided targets if they exist, otherwise auto detect
+            # Use provided targets if they exist; otherwise auto-detect.
             targets = list(lora_target_modules) if lora_target_modules else []
             if not targets or not _targets_exist(self.PLM, targets):
                 targets = _guess_lora_targets(self.PLM)
@@ -148,33 +181,26 @@ class PLM_With_Features(nn.Module):
                 target_modules=targets,
             )
             self.PLM = get_peft_model(self.PLM, lora_cfg)
-            # Uncomment for a one line summary during bring up:
+            # Uncomment for a one-line summary during bring-up:
             # self.PLM.print_trainable_parameters()
 
         hidden = self.PLM.config.hidden_size
 
-        # Attention over token embeddings
+        self.cross_blocks = nn.ModuleList(
+            [CrossFusionBlock(hidden, token_feat_dim, heads=heads, dropout=dropout) for _ in range(cross_layers)]
+        )
+
         self.attn = nn.Linear(hidden, 1)
+        self.bias_proj = nn.Sequential(nn.Linear(token_feat_dim, 64), nn.ReLU(), nn.Linear(64, 1))
+        # start bias ~OFF
+        self.bias_logit = nn.Parameter(torch.tensor(-6.0))
 
         self.seq_dropout = nn.Dropout(dropout)
 
-        # Project global features to PLM hidden size
-        self.feature_proj = nn.Sequential(
-            nn.Linear(feature_dim, hidden),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-
-        # Regression head on concatenated [pooled_seq, feature_emb]
-        self.regressor = nn.Sequential(
-            nn.Linear(hidden * 2, 512),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(512, 1)
-        )
+        self.feature_proj = nn.Sequential(nn.Linear(feature_dim, hidden), nn.ReLU(), nn.Dropout(dropout))
+        self.regressor = nn.Sequential(nn.Linear(hidden*2, 512), nn.ReLU(), nn.Dropout(dropout), nn.Linear(512,1))
 
         self.loss_fn = nn.MSELoss()
-
 
     @staticmethod
     def _masked_softmax(logits, mask, dim=-1):
@@ -198,13 +224,21 @@ class PLM_With_Features(nn.Module):
         outputs = self.PLM(input_ids=input_ids, attention_mask=input_mask)
         seq_out = outputs.last_hidden_state if hasattr(outputs, "last_hidden_state") else outputs[0]  # (B, L, H)
 
-        # Learned attention over tokens
-        attn_logits = self.attn(seq_out).squeeze(-1)  # (B, L)
+        if per_token_feats is not None:
+            key_pad = (input_mask == 0)  # True to mask
+            for blk in self.cross_blocks:
+                seq_out = blk(seq_out, per_token_feats, key_padding_mask=key_pad)
+
+        attn_logits = self.attn(seq_out).squeeze(-1)  # (B,L)
+        if per_token_feats is not None:
+            bias = self.bias_proj(per_token_feats).squeeze(-1)
+            beta = sigmoid_from_logit(self.bias_logit)
+            attn_logits = attn_logits + beta * bias
+
         attn_weights = self._masked_softmax(attn_logits, input_mask)
         pooled = torch.bmm(attn_weights.unsqueeze(1), seq_out).squeeze(1)
         pooled = self.seq_dropout(pooled)
 
-        # Fuse global features
         feat_emb = self.feature_proj(features)
         preds = self.regressor(torch.cat([pooled, feat_emb], dim=-1)).squeeze(-1)
 
@@ -212,5 +246,3 @@ class PLM_With_Features(nn.Module):
             loss = self.loss_fn(preds, targets)
             return loss, preds
         return preds
-
-
