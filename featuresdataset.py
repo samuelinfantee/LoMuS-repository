@@ -52,7 +52,6 @@ class StabilityWithFeaturesDataset(Dataset):
             f"Mismatch: {len(self.sequences)} seqs, {len(self.features)} feats, {len(self.labels)} labels"
 
 
-    @property
     def __len__(self): return len(self.sequences)
 
     def __getitem__(self, idx):
