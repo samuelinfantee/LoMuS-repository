@@ -42,12 +42,14 @@ head -n 3 ~/protstab/data/dms_one/tsub_mega/train.csv
 ```
 
 step 5:
+Run the features_CSV.py code to generate the per-sequence features:
 ```
 cd ~/protstab  
 python features.py --root data/dms_one --protein tsub_mega  
 ```
 
 # Running TAPE stability:
+Step 1:  
 Dowload and extract the stability dataset:  
 ```
 wget http://s3.amazonaws.com/songlabdata/proteindata/data_pytorch/stability.tar.gz  
@@ -60,6 +62,11 @@ stability_train.lmdb/
 stability_valid.lmdb/  
 stability_test.lmdb/  
 
+Step 2:
+Run the features_FASTA.py code to generate the per-sequence features:
+```
+python features_FASTA.py
+```
 
 # Running DMS proteins:  
 Step 1:  
