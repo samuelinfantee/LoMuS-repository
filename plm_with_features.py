@@ -181,6 +181,8 @@ class PLM_With_Features(nn.Module):
                 target_modules=targets,
             )
             self.PLM = get_peft_model(self.PLM, lora_cfg)
+            # Uncomment for a one-line summary during bring-up:
+            # self.PLM.print_trainable_parameters()
 
         hidden = self.PLM.config.hidden_size
 
@@ -214,7 +216,7 @@ class PLM_With_Features(nn.Module):
         logits = logits.masked_fill(mask == 0, float('-inf'))
         return torch.softmax(logits, dim=dim)
 
-    def forward(self, input_ids, input_mask, features, targets=None, per_token_feats=None):
+    def forward(self, input_ids, input_mask, features, targets=None):
         """
         Run the PLM, fuse features, and compute regression loss.
         """
@@ -222,16 +224,7 @@ class PLM_With_Features(nn.Module):
         outputs = self.PLM(input_ids=input_ids, attention_mask=input_mask)
         seq_out = outputs.last_hidden_state if hasattr(outputs, "last_hidden_state") else outputs[0]  # (B, L, H)
 
-        if per_token_feats is not None:
-            key_pad = (input_mask == 0)  # True to mask
-            for blk in self.cross_blocks:
-                seq_out = blk(seq_out, per_token_feats, key_padding_mask=key_pad)
-
         attn_logits = self.attn(seq_out).squeeze(-1)  # (B,L)
-        if per_token_feats is not None:
-            bias = self.bias_proj(per_token_feats).squeeze(-1)
-            beta = sigmoid_from_logit(self.bias_logit)
-            attn_logits = attn_logits + beta * bias
 
         attn_weights = self._masked_softmax(attn_logits, input_mask)
         pooled = torch.bmm(attn_weights.unsqueeze(1), seq_out).squeeze(1)
