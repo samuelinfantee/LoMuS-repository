@@ -219,7 +219,6 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
-# Dataset defaults that match your current layout
 MAX_LEN = 512
 LM_NAME = 'facebook/esm2_t33_650M_UR50D'  # ESM2 backbone
 
