@@ -71,7 +71,7 @@ def parse_aaindex1(file_path):
     return aaindex, list(aaindex.keys())
 
 # ---------------------------
-# Basis features (same recipe as before)
+# Basis features
 try:
     from Bio.SeqUtils.ProtParam import ProteinAnalysis
     def compute_basis_features(sequence):
