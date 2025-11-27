@@ -181,8 +181,6 @@ class PLM_With_Features(nn.Module):
                 target_modules=targets,
             )
             self.PLM = get_peft_model(self.PLM, lora_cfg)
-            # Uncomment for a one-line summary during bring-up:
-            # self.PLM.print_trainable_parameters()
 
         hidden = self.PLM.config.hidden_size
 
