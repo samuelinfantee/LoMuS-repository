@@ -18,7 +18,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-# --------- Defaults (kept as before unless overridden by CLI) ---------
+# --------- Defaults ---------
 FASTA_TRAIN = 'data/stability/stability_train_seqs.txt'
 FASTA_VALID = 'data/stability/stability_valid_seqs.txt'
 X_TRAIN = 'X_train_std.npy'
