@@ -48,6 +48,12 @@ cd ~/protstab
 python features.py --root data/dms_one --protein tsub_mega  
 ```
 
+step 6:
+Submit the SLURM job that runs both training and testing:
+```
+sbatch run_tsubo.slurm
+```
+
 # Running TAPE stability:
 Step 1:  
 Dowload and extract the stability dataset:  
@@ -66,6 +72,11 @@ Step 2:
 Run the features_FASTA.py code to generate the per-sequence features:
 ```
 python features_FASTA.py
+```
+step 3:
+Submit the SLURM job that runs both training and testing:
+```
+sbatch run_tape.slurm
 ```
 
 # Running DMS proteins:  
@@ -96,7 +107,16 @@ to remove a protein (after running features_csv.py):
 ```
 rm -rf data/dms_one/ [PROTEIN_NAME]  
 ```
-(STILL NEED TO DESCRIBE HOW TO RUN TRAIN/TEST
+step 4:
+Submit the SLURM job that runs both training and testing:
+```
+sbatch run_dms.slurm
+```
+Before submitting, make sure the protein ID in the SLURM script matches the protein you used in features_CSV:
+```
+# --- choose your protein ---
+PROTEIN="PIN1_HUMAN_Tsuboyama_2023_1I6C" #Or any other
+```
 
 
 
