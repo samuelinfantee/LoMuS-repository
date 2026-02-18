@@ -9,6 +9,9 @@ pip install --no-input "datasets==2.20.0" "pyarrow>=10" fsspec
 
 step 2:  
 ```
+mkdir -p external
+cd external
+git clone https://github.com/SimonKitSangChu/EsmTherm.git
 cd ~/protstab/external/EsmTherm  
 mv datasets esmt_data 2>/dev/null || true  
 ln -s esmt_data datasets 2>/dev/null || true   
