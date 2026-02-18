@@ -22,7 +22,6 @@ pip install -e .
 
 step 3:  
 ```
-cd ~/protstab/external/EsmTherm  
 python prebuild_dataset.py  
 ```
 ```
