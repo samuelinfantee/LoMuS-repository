@@ -3,7 +3,8 @@
 # Running Tsuboyama dataset:  
 step 1:   
 ```
-conda activate /data/sinfante/envs/tape  
+conda create -n tape python=3.10.18
+conda activate tape  
 pip install --no-input "datasets==2.20.0" "pyarrow>=10" fsspec  
 ```
 
