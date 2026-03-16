@@ -126,48 +126,40 @@ class CrossFusionBlock(nn.Module):
 
 
 class PLM_With_Features(nn.Module):
-    """
-    Protein language model backbone with global per sequence features.
-
-    The model:
-    - Loads an ESM2 style backbone from Hugging Face as self.PLM.
-    - Optionally attaches LoRA adapters to attention projections for PEFT.
-    - Applies a learned attention over PLM token embeddings to obtain a pooled
-      sequence vector.
-    - Projects global per sequence features to the same hidden size.
-    - Concatenates pooled PLM embedding and feature embedding, then predicts a
-      scalar regression output with an MLP head.
-    """
     def __init__(self, feature_dim: int,
                  PLM_model_name: str = 'facebook/esm2_t33_650M_UR50D',
                  dropout: float = 0.1, token_feat_dim: int = 9,
                  cross_layers: int = 2, heads: int = 4,
+                 # --- Backbone training mode ---
+                 freeze_backbone: bool = True,
                  # --- LoRA knobs ---
                  use_lora: bool = True,
-                 lora_r: int = 8, # rank
-                 lora_alpha: int = 16, # scaling
+                 lora_r: int = 9,
+                 lora_alpha: int = 16,
                  lora_dropout: float = 0.05,
-                 lora_target_modules = ("q_proj", "k_proj", "v_proj", "out_proj")):
+                 lora_target_modules=("q_proj", "k_proj", "v_proj", "out_proj")):
         super().__init__()
-        # HF ESM2 backbone
+
         self.PLM = AutoModel.from_pretrained(PLM_model_name)
 
-        # Inject LoRA adapters on attention projections.
+        # Optional baseline: freeze backbone when NOT using LoRA (head-only)
+        if not use_lora and freeze_backbone:
+            for p in self.PLM.parameters():
+                p.requires_grad = False
+
+        self.lora_used = False
+        self.lora_targets_used = None
+        self.lora_cfg_used = None
+
         if use_lora:
             if not _HAS_PEFT:
-                raise ImportError(
-                    "peft is required for LoRA. Install with `pip install peft` "
-                    "or set use_lora=False."
-                )
+                raise ImportError("peft is required for LoRA. Install `pip install peft` or set use_lora=False.")
 
-            # Resolve TaskType robustly across PEFT versions
             try:
                 task_type = TaskType.FEATURE_EXTRACTION
             except Exception:
-                # acceptable fallback for encoders
                 task_type = TaskType.TOKEN_CLS
 
-            # Use provided targets if they exist; otherwise auto-detect.
             targets = list(lora_target_modules) if lora_target_modules else []
             if not targets or not _targets_exist(self.PLM, targets):
                 targets = _guess_lora_targets(self.PLM)
@@ -181,8 +173,11 @@ class PLM_With_Features(nn.Module):
                 target_modules=targets,
             )
             self.PLM = get_peft_model(self.PLM, lora_cfg)
-            # Uncomment for a one-line summary during bring-up:
-            # self.PLM.print_trainable_parameters()
+
+            self.lora_used = True
+            self.lora_targets_used = targets
+            self.lora_cfg_used = {"r": lora_r, "alpha": lora_alpha, "dropout": lora_dropout, "targets": targets}
+
 
         hidden = self.PLM.config.hidden_size
 
@@ -216,24 +211,62 @@ class PLM_With_Features(nn.Module):
         logits = logits.masked_fill(mask == 0, float('-inf'))
         return torch.softmax(logits, dim=dim)
 
-    def forward(self, input_ids, input_mask, features, targets=None):
+    def encode_tokens(self, input_ids, input_mask):
         """
-        Run the PLM, fuse features, and compute regression loss.
+        Encode the tokenized sequence with the PLM and return per-token hidden states.
         """
-        # HF models use attention_mask
         outputs = self.PLM(input_ids=input_ids, attention_mask=input_mask)
         seq_out = outputs.last_hidden_state if hasattr(outputs, "last_hidden_state") else outputs[0]  # (B, L, H)
+        return seq_out
 
+    def pool_sequence_embeddings(self, seq_out, input_mask):
+        """
+        Pool per-token PLM embeddings into a fixed-length sequence representation.
+        """
         attn_logits = self.attn(seq_out).squeeze(-1)  # (B,L)
-
         attn_weights = self._masked_softmax(attn_logits, input_mask)
         pooled = torch.bmm(attn_weights.unsqueeze(1), seq_out).squeeze(1)
         pooled = self.seq_dropout(pooled)
+        return pooled
 
-        feat_emb = self.feature_proj(features)
+    def encode_sequence(self, input_ids, input_mask):
+        """
+        Convenience wrapper that returns the pooled PLM representation.
+        """
+        seq_out = self.encode_tokens(input_ids, input_mask)
+        pooled = self.pool_sequence_embeddings(seq_out, input_mask)
+        return pooled
+
+    def project_phys_features(self, features):
+        """
+        Project raw standardized physicochemical features into the PLM latent space.
+        This corresponds to h_phys in the paper.
+        """
+        return self.feature_proj(features)
+
+    def predict_from_pooled_and_projected(self, pooled, feat_emb, targets=None):
+        """
+        Predict from a pooled PLM representation and an already projected h_phys vector.
+        Useful for attribution methods that operate directly on the h_phys branch.
+        """
         preds = self.regressor(torch.cat([pooled, feat_emb], dim=-1)).squeeze(-1)
 
         if targets is not None:
             loss = self.loss_fn(preds, targets)
             return loss, preds
         return preds
+
+    def predict_from_pooled_and_features(self, pooled, features, targets=None):
+        """
+        Predict from a pooled PLM representation and the raw standardized physicochemical features.
+        Useful for attribution methods such as Integrated Gradients applied to the physicochemical branch.
+        """
+        feat_emb = self.project_phys_features(features)
+        return self.predict_from_pooled_and_projected(pooled, feat_emb, targets=targets)
+
+    def forward(self, input_ids, input_mask, features, targets=None):
+        """
+        Run the PLM, fuse features, and compute regression loss.
+        """
+        pooled = self.encode_sequence(input_ids, input_mask)
+        return self.predict_from_pooled_and_features(pooled, features, targets=targets)
