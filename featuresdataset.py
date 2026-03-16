@@ -26,8 +26,6 @@ from transformers import AutoTokenizer  # ESM2 tokenizer
 class StabilityWithFeaturesDataset(Dataset):
     """
     Loads sequences, standardized per-sequence features, labels.
-    Optional per-token features from a reference WT/core geometry:
-      Z_tokens[T, 9] aligned to tokens; zeros at <cls>/<eos>.
     """
     def __init__(self, fasta_path, features_path, labels_path,
                  max_length=512,
@@ -45,9 +43,10 @@ class StabilityWithFeaturesDataset(Dataset):
             raise ValueError(f"Features file {features_path} has dtype=object, this is unexpected.")
         self.features = arr.astype(np.float32)
 
-
         #load labels
         self.labels  =np.load(labels_path).astype(np.float32)
+
+        #Make sure lengths match
         assert len(self.sequences)==len(self.features)==len(self.labels), \
             f"Mismatch: {len(self.sequences)} seqs, {len(self.features)} feats, {len(self.labels)} labels"
 
@@ -56,6 +55,7 @@ class StabilityWithFeaturesDataset(Dataset):
 
     def __getitem__(self, idx):
         seq=self.sequences[idx]
+
         # ESM2 encoding (adds <cls> and <eos>; truncates to max_length)
         token_ids=self.tokenizer.encode(
             seq,
@@ -63,7 +63,6 @@ class StabilityWithFeaturesDataset(Dataset):
             max_length=self.max_length,
             truncation=True
         )
-        T=len(token_ids)
 
         item={'input_ids':torch.tensor(token_ids,dtype=torch.long),
               'features': torch.from_numpy(self.features[idx]),
@@ -92,6 +91,3 @@ def make_collate_fn(pad_id: int = 0):
 
         return out
     return collate
-
-
-
